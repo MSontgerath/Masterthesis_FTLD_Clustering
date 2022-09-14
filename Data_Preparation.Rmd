@@ -1,0 +1,871 @@
+---
+title: "Data Preparation"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 500px;
+}
+
+```
+
+Load required packages
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(Rcpp)
+library(mice)
+library(ggridges)
+library(scales)
+library(stats)
+library(factoextra)
+library(cluster)
+library(gridExtra)
+library(grid)
+library(ggpubr)
+library(creditmodel)
+library(gridGraphics)
+library(irr)
+library(ggcorrplot)
+library(ggradar)
+library(ggpattern)
+library(diceR)
+library(gtsummary)
+library(gt)
+library(ggforce)
+library(patchwork)
+library(vegan)
+```
+
+Create vectors to call relevant variables
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+CERAD <- c("tot_verb", "tot_Boston", "MMSE", "tot_word", "cor_word1", "cor_word2", "cor_word3", "cor_word_recall", "savings_word", "discrim_wor", "intrusions", "tot_figures", "tot_fig_recall", "savings_fig", "tot_phon", "TMT_A_sec", "TMT_B_sec", "TMT_B.A", "err_TMT")
+
+CDR_subscores <- c("Memory", "Orientation", "Judgment_PBS", "Community.Affairs", "Home.and.Hobbies", "Personal.Care", "Personality_Bhv", "Language")
+
+demographics <- c("Participant", "age_visit", "Gender", "Years.of.education","outcome","outcome_subgroup")
+
+# ordered by cognitive function
+nps_tests <- c("MMSE","CDR.Score",  "FTLD.CDR.Score", "Memory", "Orientation", "Judgment_PBS", "Community.Affairs","Home.and.Hobbies", "Personal.Care",  "Personality_Bhv", "Language", "TMT_A_sec", "stroop_color", "stroop_reading", "tot_word", "cor_word1", "cor_word2", "cor_word3", "cor_word_recall", "savings_word", "discrim_wor", "tot_fig_recall", "savings_fig",  "dig_forward", "block_forward","tot_verb", "tot_phon", "cookie_theft", "tot_Boston", "tot_point","tot_repeat",  "Token_Test", "tot_AAT", "TMT_B_sec", "TMT_B.A", "err_TMT", "dig_backward", "block_backward", "stroop_int", "err_stroop", "intrusions", "cor_H5PT",  "tot_H5PT", "percent_H5PT", "cog_estim", "Applause", "tot_figures", "tot_RMET")
+
+orig_questionnaires <- c("Apathy_p", "Apathy_c", "B.ADL_p", "B.ADL_c","F_ED_p", "F_ED_c","F_Dis_p", "F_Dis_c","F_A_p", "F_A_c", "D_ED_p", "D_ED_c","D_Dis_p", "D_Dis_c","D_A_p", "D_A_c", "Depression.scale")
+
+questionnaires <- c("Apathy_tot", "B.ADL_tot","FrSBe_Freq_ED", "FrSBe_Freq_Dis", "FrSBe_Freq_A","Depression.scale")
+
+
+# name variables for printing in tables and graphs 
+names_demographics <- c("Participant", "Age", "Gender", "Years of Education", "Group", "Diagnostic Specification")
+
+names_nps <- c("CERAD: MMSE", "CDR Sum of Boxes", "FTLD-CDR Sum of Boxes", "CDR: Memory", "CDR: Orientation", "CDR: Judgment, PBS", "CDR: Community Affairs", "CDR: Home & Hobbies", "CDR: Personal Care", "FTLD-CDR: Behavior", "FTLD-CDR: Language", "CERAD: TMT A", "Stroop: Color Naming", "Stroop: Word Reading", "CERAD: Total Wordlist", "CERAD: Wordlist 1", "CERAD: Wordlist 2", "CERAD: Wordlist 3", "CERAD: Wordlist Recall", "CERAD: Wordlist Savings", "CERAD: Wordlist Recognition","CERAD: Figure Recall", "CERAD: Figure Savings", "WMS-R: Digit Span Fw","WMS-R: Visual Span Fw", "CERAD: Semantic Fluency", "CERAD: Phonemic Fluency", "Cookie Theft Task", "CERAD: BNT", "Point", "Repeat","AAT: Token Test", "AAT: Written Language", "CERAD: TMT B", "CERAD: TMT B/A", "CERAD: TMT Errors", "WMS-R: Digit Span Bw", "WMS-R: Visual Span BW", "Stroop: Interference", "Stroop: Error", "CERAD: Wordlist Intrusions","H5PT: Total Correct", "H5PT: Total", "H5PT: Percent Correct", "Cognitive Estimation", "Applause Sign", "CERAD: Figure Copy","RMET")
+
+names_orig_quests <- c("AES p","AES c", "B-ADL p", "B-ADL c","FrsBe: Freq ED p", "FrSBe: Freq ED c","FrSBe: Freg Dis p", "FrSBe: Freq Dis c","FrSBe: Freq A p", "FrSBe: Freq A c","FrsBe: Distress ED p", "FrSBe: Distress ED c","FrSBe: Distress Dis p", "FrSBe: Distress Dis c","FrSBe: Distress A p", "FrSBe: Distress A c", "GDR")
+
+names_quests <- c("AES", "B-ADL", "FrSBe: Executive Dysfunction", "FrSBe: Disinhibition", "FrSBe: Apathy", "GDR")
+
+
+# shortened (for use in radar plots)
+
+names_radar <- c("Age", "Education","MMSE", "CDR", "FTLD-CDR", "CDR: Memory", "CDR: Orientation", "CDR: Judgment, PBS", "CDR: Community Affairs", "CDR: Home & Hobbies", "CDR: Personal Care", "CDR: Behavior", "CDR: Language", "TMT A", "Stroop: Color", "Stroop: Word", "Tot. Wordlist", "Wordlist 1", "Wordlist 2", "Wordlist 3", "Wordlist Recall", "Wordlist Savings", "Wordlist Recognition","Fig. Re.", "Fig. Sav.", "DSF","VSF", "S. Flu.", "P. Flu.", "Cookie", "BNT", "Point", "Repeat","Token Test", "Written Language", "TMT B", "TMT B/A", "TMT Errors", "Digit Span Bw", "Visual Span BW", "Stroop: Interference", "Stroop: Error", "Wordlist Intrusions","H5PT: Correct", "H5PT: Total", "H5PT: Percent", "Cognitive Estimation", "Applause Sign", "Figure Copy","RMET", "AES", "B-ADL", "FrSBe: Ex. Dys.", "FrSBe: Disinhibition", "FrSBe: Apathy", "GDR")
+
+
+
+# variables that are reverse coded (i.e. higher scores meaning worse performance)
+
+to_reverse <- c("CDR.Score", "FTLD.CDR.Score", as.character(CDR_subscores), "intrusions", "TMT_A_sec", "TMT_B_sec", "TMT_B.A","err_TMT", "Token_Test", "err_stroop", "Applause", "Apathy_tot", "B.ADL_tot", "FrSBe_Freq_ED", "FrSBe_Freq_Dis", "FrSBe_Freq_A", "Depression.scale")
+
+
+outcome_labels <- c(
+  healthy_control = "Healthy Control",
+  Alzheimer = "Alzheimer", 
+  bvFTD = "BvFTD", 
+  nfvPPA = "NfvPPA",
+  svPPA = "SvPPA",
+  lvPPA = "LvPPA")
+
+# define color palettes
+
+ cols <- c(healthy_control = "#A3E6DE", 
+           Alzheimer = "#47BAB2" , 
+           bvFTD = "#FBB5B1", 
+           svPPA = "#FF6B6B", 
+           nfvPPA = "#FFA96C", 
+           lvPPA = "#FFE66D")
+ imp_cols <- c("#00FAF6", "#00D3FA", "#0053FA" , "#2e00fa", "#5900FA" ,"#a000bc","#AE00FA" ,"#ca0086", "#FA00F0","#e40058")
+ cols_radar <- c("#FF5A5F","#F4B319", "#007885","#94E27C", "#810F57","#02D0C0", "#F89A91", "#BAAE79", "#9BA198")
+  
+```
+
+Load dataset (1064 variables, 2111 rows defined by Participant and
+VISIT)
+
+```{r}
+# load data
+FTLD <- read.csv(file.choose(), sep = ";", dec = ",", header = TRUE)
+
+```
+
+# Data preparation
+
+Attribute correct/ useful labels to each patient from two columns that
+define the diagnostic group (finalSubgroup, finalSubgroupSpec)
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+levels_final_subgroup <- unique(FTLD$finalSubgroup)
+levels_final_subgroup_spec <- unique(FTLD$finalSubgroupSpec)
+
+FTLD<-FTLD %>%
+  mutate(outcome = ifelse (finalSubgroup == "Alzheimer", "Alzheimer", 
+                           ifelse (finalSubgroupSpec == "Probable bvFTD" | finalSubgroupSpec == "Possible bvFTD" | finalSubgroupSpec == "bvFTD with definitive FTLD-Pathology", "bvFTD", 
+                                   ifelse (finalSubgroupSpec == "lvPPA_clinical" | finalSubgroupSpec == "lvPPA_imageGuided" | finalSubgroupSpec == "lvPPA_pathological", "lvPPA",
+                                           ifelse (finalSubgroupSpec == "nfvPPA_clinical" | finalSubgroupSpec == "nfvPPA_imageGuided" | finalSubgroupSpec == "nfvPPA_pathological", "nfvPPA", 
+                                                   ifelse (finalSubgroupSpec == "svPPA_clinical" | finalSubgroupSpec == "svPPA_imageGuided" | finalSubgroupSpec == "svPPA_pathological", "svPPA", 
+                                                           ifelse (finalSubgroup == "PSP","PSP", 
+                                                                   ifelse (finalSubgroup =="CBS", "CBS", 
+                                                                           ifelse (finalSubgroup == "Controls in same age group" | finalSubgroup == "Healthy family member (non consanguin)", "healthy_control", 
+                                                                                   NA))))))))) 
+
+
+```
+
+-   keep only first visit
+
+-   filter participants (remove outcome = NA, CBS, PSP) and order levels
+
+-   rename tests
+
+-   remove participants that do not specify the gender
+
+-   add variables:
+
+    -   sum of intrusions from CERAD wordlist to fit CERAD norms
+
+    -   sum of errors on TMT
+
+    -   sum of errors on Stroop
+
+    -   sum score for Applause task
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+FTLD_first_visit <- FTLD%>%
+  filter(VISIT == 1)%>%
+  filter(outcome != "NA", outcome != "PSP", outcome != "CBS")%>%
+  mutate("outcome_subgroup" = ifelse(outcome == "healthy_control" | outcome == "Alzheimer", outcome, finalSubgroupSpec))%>% # add to keep information about specific diagnosis (clinical, imaging-supported or pathological)
+  mutate(outcome = factor(outcome, levels = unique(outcome)))%>%
+  mutate(outcome = fct_relevel(outcome, "healthy_control", "Alzheimer", "bvFTD", "svPPA", "nfvPPA", "lvPPA"))%>%
+  rename("Judgment_PBS" = Judgment...Problem.Solving,
+         "Personality_Bhv" = Personality...Behavioral.Problem,
+         "tot_verb" = Total.correct..1.min..,
+         "tot_Boston" = Total.correct,
+         "tot_word" = Total.correct.1,
+         "cor_word1" = Total.correct.1st.trial,
+         "cor_word2" = Total.correct.2nd.trial,
+         "cor_word3" = Total.correct.3rd.trial,
+         "intrusions_word_list" = Total.intrusions,
+         "discrim_wor" = Discriminability..in...,
+         "tot_figures" = Total.correct.2,
+         "cor_word_recall" = Total.correct.3,
+         "intrusions_word_list_recall" = Total.intrusions.1,
+         "correct_YES_word_list_recognition" = Total.correct..YES.,
+         "correct_NO_word_list_recognition" = Total.correct..NO., 
+         "tot_fig_recall" = Total.correct.4, 
+         "TMT_A_sec" = Time.to.complete,
+         "TMT_B_sec" = Time.to.complete.1,
+         "tot_phon" = Total.correct..1.min...1,
+         "savings_word" = Savings.word.list.in....,
+         "savings_fig" = Savings.figures..in...,
+         "TMT_B.A" = TMT.B.A,
+         "dig_forward" = Number.of.forward.Digit.Span.task,
+         "dig_backward" = Number.of.backward.Digit.Span.task,
+         "block_forward" = Number.of.forward.Block.Tapping,
+         "block_backward" = Number.of.backward.Block.Tapping,
+         "cookie_theft" = Total.number,
+         "Token_Test" = Total.number.of.faults,
+         "age_adj_error_Token_Test" = Age.adjusted.total.number.of.errors,
+         "tot_AAT" = Number.of.total.data.points..Part.1.3.,
+         "tot_repeat" = Total.Correct.Repeat,
+         "tot_point" = Total.Correct.Point,
+         "stroop_color" = Total.correct.5,
+         "err_str_color" = Total.errors.2,
+         "stroop_reading" = Total.correct.6,
+         "err_str_reading" = Total.errors.3,
+         "stroop_int" = Total.correct.7,
+         "err_str_int" = Total.errors.4, 
+         "cor_H5PT" = Total.correct.8, 
+         "tot_H5PT" = Total.number.1,
+         "percent_H5PT" = Percent.correct, 
+         "cog_estim" = Total.number.of.data.points,
+         "RMET_correct_m" = Number.correct.m,
+         "RMET_correct_f" = Number.correct.f,
+         "Applause_1" = Number.of.data.points.trial.1,
+         "Applause_2" = Number.of.data.points.trial.2,
+         "tot_RMET" = Total.number.correct,
+         "Apathy_c" = Apathy_c.Score,
+         "Apathy_p" = Apathy_p.Score, 
+         "B.ADL_c" = B.ADL_c.total.score..1...10., 
+         "B.ADL_p" = B.ADL_p.total.score..1...10.,
+         "F_ED_c" = Frequency.Exec..Dysfuncion_c, 
+         "F_Dis_c" = Frequency.Disinhibition_c, 
+         "F_A_c" = Frequency.Apathy_c, 
+         "D_ED_c" = Distress.Exec..Dysfunction_c,
+         "D_Dis_c" = Distress.Disinhibition_c, 
+         "D_A_c" = Distress.Apathy_c, 
+         "F_ED_p" = Frequency.Exec..Dysfunction_p, 
+         "F_Dis_p" = Frequency.Disinhibition_p, 
+         "F_A_p" = Frequency.Apathy_p, 
+         "D_ED_p" = Distress.Exec..Dysfunction_p,
+         "D_Dis_p" = Distress.Disinhibition_p, 
+         "D_A_p" = Distress.Apathy_p)%>%
+  rowwise()%>%
+  mutate("intrusions" = intrusions_word_list + intrusions_word_list_recall,
+         "err_TMT" = Total.errors + Total.errors.1,
+         "err_stroop" = err_str_color + err_str_reading + err_str_int,
+         "Applause" = Applause_1 + Applause_2)%>% 
+  filter(is.na(Gender) != TRUE & is.na(age_visit) != TRUE) 
+
+```
+
+-   create vectors for variables of interest
+
+-   change all variables to be either ordered factors or numeric
+
+```{r}
+
+# recode CDR scores and reorder factor levels 
+recode_CDR <- function(x) {
+ recode(x, none = "0", questionable = "0.5", mild = "1", moderate = "2", severe = "3")
+}
+
+FTLD_first_visit[, which(colnames(FTLD_first_visit) %in% CDR_subscores)] <- sapply(FTLD_first_visit[, which(colnames(FTLD_first_visit) %in% CDR_subscores)], function(x) recode_CDR(x))
+
+FTLD_first_visit <- FTLD_first_visit%>%
+  mutate_if(is.character, as_factor)%>%
+  mutate_if(is.integer, as.numeric)%>%
+  mutate_at(vars("Memory", "Orientation", "Judgment_PBS", "Community.Affairs", "Home.and.Hobbies", "Personal.Care", "Personality_Bhv", "Language"), 
+            ~fct_relevel(., c("0", "0.5", "1", "2", "3")))%>%
+  mutate(ISCED.Education.level = fct_relevel(ISCED.Education.level, "ISCED 0", "ISCED 1", "ISCED 2", "ISCED 3", "ISCED 4", "ISCED 5", "ISCED 6"))
+
+```
+
+replace implausible values (outside defined range of the variable) by NA
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+FTLD_first_visit%>%
+  filter(cor_word3 > 10 | TMT_A_sec > 180 | TMT_B_sec > 300 | percent_H5PT > 100 | tot_AAT > 90)%>%
+  select(Participant, cor_word3, TMT_A_sec, TMT_B_sec, TMT_B.A, tot_AAT)
+
+final_ds <- FTLD_first_visit
+
+final_ds[final_ds == ""] <- NA
+final_ds$cor_word3[161] <- NA
+final_ds$tot_word[161] <- NA
+final_ds$savings_word[161] <- NA
+final_ds$TMT_A_sec[c(190, 633)] <- NA
+final_ds$TMT_B_sec[c(161, 633, 675)] <- NA
+final_ds$TMT_B.A[c(161, 633, 675)] <- NA
+final_ds$percent_H5PT[543] <- NA
+final_ds$cor_H5PT[543] <- NA
+final_ds$tot_H5PT[543] <- NA
+final_ds$Gender[390] <- NA
+final_ds$tot_AAT[150] <- NA
+
+final_ds[, c(242:249)] <- sapply(final_ds[, c(242:249)], function(x) as.numeric(as.character(x)))
+
+```
+
+# Visualize patterns of missingness
+
+## By participant
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+miss_pct <- final_ds%>%
+  select(Participant,outcome, all_of(nps_tests), all_of(orig_questionnaires))%>%
+  pivot_longer(3:67, names_to = "test", values_to = "value")%>%
+  group_by(Participant,outcome)%>%
+  summarize("percentage_missing" = sum(is.na(value)==TRUE)/(sum(is.na(value) == TRUE) + sum(is.na(value) != TRUE))*100)
+
+miss_hist <- ggplot(miss_pct, aes(x = percentage_missing))+
+  geom_histogram(aes (fill = outcome), bins = 100)+
+  scale_fill_manual(values = cols, labels = outcome_labels, drop = TRUE)+
+  labs(title = "Number of Participants with Specified Percentage of Missing Values (split by Group)", x = "", y = "Count", fill = "Group")+
+  theme_pubr(legend = "right")
+
+miss_dens <- miss_pct%>%
+  ggplot(aes(x = percentage_missing, fill = outcome, color = outcome))+
+  geom_density(alpha = 0.2, size = 1)+
+  scale_color_manual(values = cols)+
+  scale_fill_manual(values = cols)+
+  labs(x = "Percentage Missing", y = "Density")+
+  theme_pubr(legend = "none")
+
+miss_hist/miss_dens+plot_layout(heights = c(3,1))
+
+
+```
+
+## By group and variable
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+miss_test <- final_ds%>%
+  select(Participant, outcome, all_of(nps_tests), all_of(orig_questionnaires))%>%
+  pivot_longer(cols = c(CDR.Score:Depression.scale), names_to = "Test", values_to = "present_or_missing")%>%
+  mutate(missing_data = ifelse(is.na(present_or_missing) == TRUE, "Missing", "Present"))%>%
+  group_by(Test, outcome)%>%
+  summarize(n_missing = sum(missing_data == "Missing"),
+            n_present = sum(missing_data == "Present"),
+            n_total = sum(missing_data == "Present") + sum(missing_data == "Missing"),
+            percent_missing_outcome = (sum(missing_data == "Missing")/ (sum(missing_data == "Present")+ sum(missing_data == "Missing"))*100),
+            percent_present_outcome = (sum(missing_data == "Present")/ (sum(missing_data == "Present")+sum(missing_data == "Missing"))*100))
+
+renm_test <- tibble("orig" = c(nps_tests, orig_questionnaires), 
+                    "new" = c(names_nps, names_orig_quests))
+miss_test <- left_join(miss_test, renm_test, by = c("Test" = "orig"))%>%
+  select(-Test)%>%
+  group_by(new)%>%
+  mutate(percent_missing = round(sum(n_missing)/sum(n_total)*100,2),
+         percent_present = round(sum(n_present)/ sum(n_total)*100,2))%>%
+  mutate(Test_percent_present = paste(new, paste0(" (",percent_present,"%) ")))  
+
+miss_test$outcome <- factor(miss_test$outcome,  levels = c("lvPPA", "nfvPPA", "svPPA", "bvFTD", "Alzheimer", "healthy_control"), ordered = TRUE, labels = c("LvPPA", "NfvPPA", "SvPPA", "BvFTD", "Alzheimer", "Healthy Control"))
+
+ggplot(miss_test, aes(x = reorder(Test_percent_present,desc(percent_present)), y = outcome, fill = percent_present_outcome))+
+  geom_tile(col = "white", size = 0.5)+
+  labs(title = "Percentage Missing on the Variables Included (split by Group)",x = "Test (% present)", y = "", fill = "% Present")+
+  theme_pubr(x.text.angle = 60, legend = "left")
+
+```
+
+# Create two seperate datasets for imputation: one w/o and one with questionnaires
+
+## W/o questionnaires
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+w.o.quest <- final_ds%>%
+  select(c(all_of(demographics),all_of(nps_tests)))
+```
+
+limit imputation to participants having equal to or less than 20%
+missingness in the data of interest
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# atribute percentage of missingness to each participant and find those who have less than 20% missingness
+pp_20_w.o <- w.o.quest%>%
+  mutate_if(is.double, as.character)%>%
+  mutate_if(is.integer, as.character)%>%
+  pivot_longer(7:54, names_to = "test", values_to = "value")%>%
+  group_by(Participant)%>%
+  summarise("perc_missing" = sum(is.na(value) == TRUE)/ (sum(is.na(value) == TRUE) + sum(is.na(value) != TRUE)))%>%
+  filter(perc_missing <= 0.2)
+
+selected_participants_w.o <- as_vector(pp_20_w.o$Participant)
+
+# filter dataset to include on pp with < 20% missingness
+to_impute_w.o.quest <- w.o.quest%>%
+  filter(Participant %in% selected_participants_w.o)
+
+```
+
+## With questionnaires
+
+checking equivalence of patient and informant versions of the
+questionnaires
+
+-   Apathy evaluation scale and B.ADL are equivalent
+
+-   FrSBe: only use frequency (not distress as it relates to the person
+    answering the questionnaire; i.e. patient or informant respectively)
+
+use only the "self" version of questionnaires for healthy controls and
+only the "informant" version for patient groups
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+with_quest <- final_ds%>%
+  mutate("Apathy_tot" = ifelse(outcome == "healthy_control", Apathy_p, Apathy_c), 
+         "B.ADL_tot" = ifelse(outcome == "healthy_control", B.ADL_p, B.ADL_c), 
+         "FrSBe_Freq_ED" = ifelse(outcome == "healthy_control", F_ED_p, F_ED_c), 
+         "FrSBe_Freq_Dis" = ifelse(outcome == "healthy_control", F_Dis_p, F_Dis_c), 
+         "FrSBe_Freq_A" = ifelse(outcome == "healthy_control", F_A_p, F_A_c))%>%
+  select(all_of(demographics),
+         all_of(nps_tests),
+         all_of(questionnaires)) 
+
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+pp_20_with <- with_quest%>%
+  mutate_if(is.double, as.character)%>%
+  mutate_if(is.integer, as.character)%>%
+  pivot_longer(7:60, names_to = "test", values_to = "value")%>%
+  group_by(Participant)%>%
+  summarise("perc_missing" = sum(is.na(value) == TRUE)/ (sum(is.na(value) == TRUE) + sum(is.na(value) != TRUE)))%>%
+  filter(perc_missing <= 0.2)
+
+selected_participants <- as_vector(pp_20_with$Participant)
+
+to_impute_with_quest <- with_quest%>%
+  filter(Participant %in% selected_participants)
+
+# compare participants selected for imputation with or without questionnaires
+str(which(!selected_participants %in% selected_participants_w.o)) # 13 participants that are in analysis with quest but not w/o quest
+str(which(!selected_participants_w.o %in% selected_participants)) # 20 participants that are in analysis w/o but not with quest
+
+```
+
+# Inspect datasets to be used and create summary tables
+
+## Demographic tables
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+create_dem_table <- function(dem_table, specification) {
+  
+  dem_table%>%
+  mutate("outcome_specification" = ifelse(outcome_subgroup == "bvFTD with definitive FTLD-Pathology"| outcome_subgroup == "lvPPA_pathological" | outcome_subgroup == "nfvPPA_pathological" | outcome_subgroup == "svPPA_pathological", "pathological", 
+                                          ifelse(outcome_subgroup == "Possible bvFTD" | outcome_subgroup == "lvPPA_clinical" | outcome_subgroup == "nfvPPA_clinical" | outcome_subgroup == "svPPA_clinical", "clinical", 
+                                                 ifelse(outcome_subgroup == "Probable bvFTD" | outcome_subgroup == "lvPPA_imageGuided" |outcome_subgroup == "nfvPPA_imageGuided" |outcome_subgroup == "svPPA_imageGuided", "image_guided", NA))))%>%
+  mutate("perc_missing" = perc_missing*100)%>%
+  group_by(outcome)%>%
+  summarize("N" = n(),
+            "% of Total" = round(n()/dim(.)[1]*100, 1), 
+            "% Clinical Diagnosis" = round(sum(outcome_specification == "clinical")/n()*100, 1),
+            "% Imaging-Supported Diagnosis" = round(sum(outcome_specification == "image_guided")/n()*100, 1),
+            "% Diagnosis With Definite Pathology" = round(sum(outcome_specification == "pathological")/n()*100,1),
+            "Male" = round(sum(Gender == "male")/n()*100, 1), 
+            "Female" = round(sum(Gender == "female")/ n()*100, 1),
+            "mean_age" = round(mean(age_visit, na.rm = TRUE), 1), 
+            "sd_age" = round(sd(age_visit, na.rm = TRUE), 1), 
+            "Y.of.edu" = round(mean(Years.of.education, na.rm = TRUE), 1), 
+            "sd_years_edu" = round(sd(Years.of.education, na.rm = TRUE), 1),
+            "FTLD_CDR" = round(mean(FTLD.CDR.Score, na.rm = TRUE), 1), 
+            "sd_FTLD_CDR_score" = round(sd(FTLD.CDR.Score, na.rm = TRUE), 1),
+            "percent_mis" = round(mean(perc_missing), 1), 
+            "sd_perc_missing" = round(sd(perc_missing, na.rm =TRUE), 1), 
+            "Symptom_onset" = round(mean(Age.of.initial.symptoms, na.rm = TRUE), 1), 
+            "sd_onset" = round(sd(Age.of.initial.symptoms, na.rm = TRUE),1), 
+            "disease_dur" = round(mean (disease_duration, na.rm = TRUE), 1), 
+            "sd_duration" = round(sd(disease_duration, na.rm = TRUE), 1))%>%
+  gt(rowname_col = "outcome")%>%
+  tab_spanner("% Gender", c("Male", "Female"), level = 1)%>%
+  tab_spanner("Age", c("mean_age", "sd_age"))%>%
+  tab_spanner("Years of Education", c("Y.of.edu", "sd_years_edu"))%>%
+  tab_spanner("FTLD-CDR Score", c("FTLD_CDR", "sd_FTLD_CDR_score"))%>%
+  tab_spanner("% Missing", c("percent_mis", "sd_perc_missing"))%>%
+  tab_spanner("Age at Symptom Onset", c("Symptom_onset", "sd_onset"))%>%
+  tab_spanner("Disease Duration", c("disease_dur", "sd_duration"))%>%
+  cols_label(mean_age = md("Mean"), sd_age = md("SD"), 
+             Y.of.edu = md("Mean"), sd_years_edu = md("SD"), 
+             FTLD_CDR = md("Mean"), sd_FTLD_CDR_score = md("SD"), 
+             percent_mis = md("Mean"), sd_perc_missing = md("SD"), 
+             Symptom_onset = md("Mean"), sd_onset = md("SD"), 
+             disease_dur = md("Mean"), sd_duration = md("SD"))%>%
+  sub_missing(., columns = everything(), missing_text = "-")%>%
+  tab_header(title = md("Demographics for Each Diagnostic Group"), 
+             subtitle = md(paste("Participants Included in the Analysis", specification, "Questionnaire Scores")))%>%
+  opt_align_table_header(align = "left")%>%
+  tab_stubhead(label = "Diagnostic Group")%>%
+  summary_rows(columns = everything(),fns = list(total = "sum"))
+
+}
+
+dem_table_w.o <- left_join(to_impute_w.o.quest, pp_20_w.o, by = "Participant")
+dem_table_w.o <- left_join(dem_table_w.o, FTLD_first_visit[, c(1, 9,11)], by = "Participant")
+
+create_dem_table(dem_table_w.o, "Excluding")
+
+dem_table_with <- left_join(to_impute_with_quest, pp_20_with, by = "Participant")
+dem_table_with <- left_join(dem_table_with, FTLD_first_visit[, c(1, 9,11)], by = "Participant")
+
+create_dem_table(dem_table_with, "Including")
+
+
+
+```
+
+## Amount of missing data by variable and split for healthy controls and patient groups
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+# seperate for healthy control and patient groups
+
+healthy_w.o <- to_impute_w.o.quest%>%
+  filter(outcome == "healthy_control")
+miss_healthy_w.o <- pivot_longer(as_tibble(lapply(healthy_w.o, function(x) sum(is.na(x)))), cols = c(1:54), names_to = "Var", values_to = "missing_healthy_controls_w.o")
+
+pat_w.o <- to_impute_w.o.quest%>%
+  filter(outcome != "healthy_control")
+miss_pat_w.o <- pivot_longer(as_tibble(lapply(pat_w.o, function(x) sum(is.na(x)))), cols = c(1:54), names_to = "Var", values_to = "missing_patients_w.o")
+
+miss_w.o_ <- full_join(miss_healthy_w.o, miss_pat_w.o, by = "Var")
+
+miss_tot_w.o <- pivot_longer(as_tibble(lapply(to_impute_w.o.quest, function(x) sum(is.na(x)))), cols = c(1:54), names_to = "Var", values_to = "missing_w.o")
+
+miss_w.o <- full_join(miss_w.o_, miss_tot_w.o, by = "Var")%>%
+  mutate("perc_healthy_w.o" = round(missing_healthy_controls_w.o/dim(healthy_w.o)[1]*100, 2), 
+         "perc_pat_w.o" = round(missing_patients_w.o/ dim(pat_w.o)[1]*100, 2),
+         "perc_w.o" = round(missing_w.o/ dim(to_impute_w.o.quest)[1]*100, 2))%>%
+  mutate("missing_healthy_w.o" = paste0(missing_healthy_controls_w.o, " (", perc_healthy_w.o, "%)"), 
+         "missing_patients_w.o" = paste0(missing_patients_w.o, " (", perc_pat_w.o, "%)"), 
+         "missing_w.o" = paste0(missing_w.o, " (", perc_w.o, "%)"), .keep = "unused")%>%
+  select(-missing_w.o, missing_w.o)
+
+healthy_with <- to_impute_with_quest%>%
+  filter(outcome == "healthy_control")
+miss_healthy_with <- pivot_longer(as_tibble(lapply(healthy_with, function(x) sum(is.na(x)))), cols = c(1:60), names_to = "Var", values_to = "missing_healthy_controls_with")
+
+pat_with <- to_impute_with_quest%>%
+  filter(outcome != "healthy_control")
+miss_pat_with <- pivot_longer(as_tibble(lapply(pat_with, function(x) sum(is.na(x)))), cols = c(1:60), names_to = "Var", values_to = "missing_patients_with")
+
+miss_with_ <- full_join(miss_healthy_with, miss_pat_with, by = "Var")
+  
+miss_tot_with <- pivot_longer(as_tibble(lapply(to_impute_with_quest, function(x) sum(is.na(x)))), cols = c(1:60), names_to = "Var", values_to = "missing_with")
+
+miss_with <- full_join(miss_with_, miss_tot_with, by = "Var")%>%
+  mutate("perc_healthy_with" = round(missing_healthy_controls_with/dim(healthy_with)[1]*100, 2), 
+         "perc_pat_with" = round(missing_patients_with/ dim(pat_with)[1]*100, 2),
+         "perc_with" = round(missing_with/ dim(to_impute_with_quest)[1]*100, 2))%>%
+  mutate("missing_healthy_with" = paste0(missing_healthy_controls_with, " (", perc_healthy_with, "%)"), 
+         "missing_patients_with" = paste0(missing_patients_with, " (", perc_pat_with, "%)"),
+         "missing_with" = paste0(missing_with, " (", perc_with, "%)"), .keep = "unused")%>%
+  select(-missing_with, missing_with)
+
+full_join(miss_w.o, miss_with, by = "Var")%>%
+  gt()%>%
+  tab_spanner("Excluding Questionnaires", c("missing_patients_w.o", "missing_healthy_w.o", "missing_w.o"))%>%
+  tab_spanner("Including Questionnaires", c("missing_patients_with", "missing_healthy_with", "missing_with"))%>%
+  # tab_header(title = "Number and Percentage of Missing Values for Each Variable")%>%
+  cols_label(Var = "Variable", 
+             missing_healthy_w.o = md("Healthy Controls"), 
+             missing_patients_w.o = md("Patients"),
+             missing_w.o = "Total",
+             missing_healthy_with = md("Healthy Controls"), 
+             missing_patients_with = md("Patients"),
+             missing_with = md("Total"))%>%
+  tab_options(table.font.names = "Times New Roman", table.font.size = px(12), column_labels.font.weight = "bold", column_labels.border.bottom.color = "black", table_body.border.bottom.color = "black", table_body.border.top.color = "black")%>%
+  tab_style(style = cell_borders(sides = c("top", "bottom"), color = "white"), locations = cells_body(columns = everything(), rows = everything()))
+  
+
+```
+
+## All variables included with means and sd for each group
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+to_impute_w.o.quest[c(2, 4,5, 7:54)]%>%
+  tbl_summary(by = outcome, missing = "no", type = everything() ~ "continuous",
+              statistic = list(everything() ~ "{mean} ({sd})"),
+              digits = list(everything() ~ c(1,1)))
+
+to_impute_with_quest[c(2, 4,5, 7:60)]%>%
+  tbl_summary(by = outcome, missing = "no", type = everything() ~ "continuous",
+              statistic = list(everything() ~ "{mean} ({sd})"),
+              digits = list(everything() ~ c(1,1)))
+
+```
+# Imputation using MICE algorithm
+
+## W/o questionnaires
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+init = mice(to_impute_w.o.quest, maxit = 0)
+meth = init$method
+num_var <- colnames(to_impute_w.o.quest[, -c(1:6,7,8,20,25,30,34,51)]) 
+
+# exclude: variables not to be imputed (Participant, outcome, age, gender)
+# exclude tot_word because of logged events (is sum of other variables)
+# to make results coherent, impute subscores and calculate total/ derivated scores afterwards (FTLD-CDR, CDR, tot_word, savings_word, savings_figure,TMT_B.A, percent_h5PT)
+
+meth[num_var] = "pmm"
+meth[c("Participant","outcome", "outcome_subgroup", "age_visit", "Gender", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT")] <- "" ## not to be imputed 
+
+predM = init$predictorMatrix
+predM[, colnames(predM) %in% c("Participant", "outcome", "outcome_subgroup", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT")] <- 0 # not to be used for imputation of other variables 
+predM[rownames(predM) %in% c("Participant", "outcome", "outcome_subgroup", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT"), ] <- 0
+#View(predM) # check Prediction Matrix 
+
+set.seed(160222)
+
+imputed_w.o <- mice(to_impute_w.o.quest, method=meth, predictorMatrix=predM, m=10, maxit = 100, print = FALSE)
+
+```
+
+## With questionnaires
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+init = mice(to_impute_with_quest, maxit = 0)
+meth = init$method
+
+num_var <- colnames(to_impute_with_quest[, -c(1:6, 7,8,20, 25, 30, 34, 51)])
+
+meth[num_var] = "pmm"
+meth[c("Participant","outcome", "outcome_subgroup", "age_visit", "Gender", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT")] <- "" ## not to be imputed 
+
+predM = init$predictorMatrix
+
+predM[, colnames(predM) %in% c("Participant", "outcome", "outcome_subgroup", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT")] <- 0 # not to be used for imputation of other variables 
+
+predM[rownames(predM) %in% c("Participant", "outcome", "outcome_subgroup", "tot_word", "CDR.Score", "FTLD.CDR.Score", "savings_word","savings_fig", "TMT_B.A", "percent_H5PT"), ] <- 0
+#View(predM) # check Prediction Matrix 
+
+
+set.seed(24022022)
+
+imputed_with_quests <- mice(to_impute_with_quest, method=meth, predictorMatrix=predM, m=10, maxit = 100, print = FALSE)
+```
+
+# Save imputed datasets
+
+(as files on PC and as list within R environment)
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+imputed_ds <- c(1:10)
+
+# fill variables that are derivatives of other variables 
+
+fill_missings <- function(x, imputation_res, specification_save, specification_dt) {
+  imputed <- complete(imputation_res, x)%>%
+    mutate("CDR.Score" = ifelse(is.na(CDR.Score) == TRUE, rowSums(.[, c(10:15)]), CDR.Score), 
+           "FTLD.CDR.Score" = ifelse(is.na(FTLD.CDR.Score) == TRUE, rowSums(.[, c(10:17)]), FTLD.CDR.Score), 
+         "savings_word" = ifelse(is.na(savings_word) == TRUE & cor_word_recall != 0, round(cor_word_recall/cor_word3 * 100, 2), 
+                                 ifelse(is.na(savings_word) == TRUE & cor_word_recall == 0, 0, 
+                                               savings_word)),
+         "savings_word" = ifelse(is.infinite(savings_word) != TRUE, savings_word, 0),
+         "savings_fig" = ifelse(is.na(savings_fig) == TRUE & tot_fig_recall != 0, round(tot_fig_recall/tot_figures *100,2), 
+                                   ifelse(is.na(savings_fig) == TRUE & tot_fig_recall == 0, 0, savings_fig)),
+         "TMT_B.A" = ifelse(is.na(TMT_B.A) == TRUE, round(TMT_B_sec/TMT_A_sec,2), TMT_B.A), 
+         "percent_H5PT" = ifelse(is.na(percent_H5PT) == TRUE, round(cor_H5PT/tot_H5PT*100,0), percent_H5PT))
+  
+  write.csv(imputed, file = paste0(my_path, paste(specification_save), paste(x)), row.names = FALSE)
+  
+  assign(paste0(specification_dt, imputed_ds[i]), imputed, envir = .GlobalEnv)
+  
+}
+
+# save imputations without questionnaires
+my_path <- "C:\\Users\\marie\\OneDrive\\CN2 master\\Thesis\\imputed\\less_20_perc_miss_w.o_quest"
+
+for (i in seq_along(imputed_ds)){
+  fill_missings(imputed_ds[i], imputed_w.o, "\\w.o.quest", "imputed_w.o_quest")
+}
+
+list_w.o_quest <- list(imputed_w.o_quest1, imputed_w.o_quest2, imputed_w.o_quest3, imputed_w.o_quest4, imputed_w.o_quest5, imputed_w.o_quest6, imputed_w.o_quest7, imputed_w.o_quest8, imputed_w.o_quest9, imputed_w.o_quest10)
+
+# save imputations with questionnaires
+my_path <- "C:\\Users\\marie\\OneDrive\\CN2 master\\Thesis\\imputed\\less_20_perc_miss_with_quest"
+
+for (i in seq_along(imputed_ds)){
+  fill_missings(imputed_ds[i], imputed_with_quests, "\\with_quest", "imputed_quest")
+}
+
+list_with_quest <- list(imputed_quest1, imputed_quest2, imputed_quest3, imputed_quest4, imputed_quest5, imputed_quest6, imputed_quest7, imputed_quest8, imputed_quest9, imputed_quest10)
+```
+
+# Inspect imputation results
+
+## Check convergence
+
+### Without Questionnaire Score
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+plot(imputed_w.o)
+
+```
+
+### With Questionnaire Scores
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+plot(imputed_with_quests)
+
+```
+
+## Density plots of original dataset and datasets including the imputations
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# create single dataset containing original data and all imputation data
+
+imputed_w.o_fused <- rbind(to_impute_w.o.quest, imputed_w.o_quest1, imputed_w.o_quest2, imputed_w.o_quest3, imputed_w.o_quest4, imputed_w.o_quest5, imputed_w.o_quest6, imputed_w.o_quest7, imputed_w.o_quest8, imputed_w.o_quest9, imputed_w.o_quest10)
+
+imputed_w.o_fused <- cbind("imputed_ds" = as_factor(c(rep("orig", 469), rep(1:10, each = 469))), imputed_w.o_fused)%>%
+  mutate("group" = ifelse(outcome == "healthy_control", "healthy_control", "patient"))
+
+imputed_with_fused <- rbind(to_impute_with_quest, imputed_quest1, imputed_quest2, imputed_quest3, imputed_quest4, imputed_quest5, imputed_quest6, imputed_quest7, imputed_quest8, imputed_quest9, imputed_quest10)
+
+imputed_with_fused <- cbind("imputed_ds" = as_factor(c(rep("orig", 462), rep(1:10, each = 462))), imputed_with_fused)%>%
+  mutate("group" = ifelse(outcome == "healthy_control", "healthy_control", "patient"))
+
+# plot the density distributiuons of the original and each one of the imputed datasets split by healthy vs patient group
+
+density_plots <- function(dataset) {
+
+  colnames(dataset)[c(2:(length(dataset)-1))] <- c(names_demographics, names_nps, names_quests)
+  
+  density_plot_group <- function(var) {
+  col_num <- which(colnames(dataset) == var)
+  num_missing <- round(sum(is.na(dataset[col_num]))/sum(dataset$imputed_ds == "orig"), 4)*100
+  dataset[,length(dataset)] <- factor(dataset[,length(dataset)], levels = c("healthy_control", "patient"), labels = c("Healthy Control", "Patient"))
+  
+
+  
+  plot <- if(num_missing > 0.21) {
+    ggplot()+
+  geom_density_ridges(data = dataset, aes_(x = as.name(var), y = ~imputed_ds, fill = ~group))+
+  labs(title = paste0(var, " (",num_missing, "% missing)"), fill = "", y = "Dataset (original or imputed 1-10)", x = "")+
+  theme_pubr(legend = "right")
+  }
+  return(plot)
+}
+
+lapply(names(dataset[, c(5, 8:(dim(dataset)[2]-1))]), density_plot_group)  
+  
+}
+```
+
+### Without Questionnaire Score
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+density_plots(imputed_w.o_fused)
+
+```
+
+### With Questionnaire Scores
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+density_plots(imputed_with_fused)
+
+```
+
+## Density plots of original and imputed values
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# plot the density of the original vs imputed values (not whole datasets but only the imputed values) 
+
+
+seperate_group <- function(dataset){
+  
+  colnames(dataset)[c(2:(length(dataset)-1))] <- c(names_demographics, names_nps, names_quests)
+  
+  seperate_by_group <- function(var) {
+  
+  col_num <- which(colnames(dataset) == var)
+  selected_imp <- dataset[dataset$Participant %in% dataset$Participant[which(is.na(dataset[col_num]) == TRUE)], ]
+  selected_nmis <- dataset[!(dataset$Participant %in% dataset$Participant[which(is.na(dataset[col_num]) == TRUE)]), ]
+  num_missing <- round(sum(is.na(dataset[col_num]))/sum(dataset$imputed_ds == "orig"), 4)*100
+  plot <- if(num_missing > 0.21) {
+ ggplot()+
+    geom_density(data = selected_imp, aes_(x = as.name(var), fill = ~imputed_ds), color = "black", alpha = 0.15)+
+    geom_density(data = selected_nmis, aes_(x = as.name(var)), size = 1.5, linetype = "dotted", show.legend = FALSE) +
+    geom_rug(data = selected_imp, aes_(x = as.name(var)))+
+    facet_grid(group~., scales = "free")+
+    labs(title = paste0(var, " (",num_missing, "% missing)"), fill = "", y = "Density")+
+    scale_fill_manual(values = imp_cols)+
+    theme_pubr(legend = "right")
+  
+  }
+  print(plot)
+}
+
+lapply(names(dataset[, c(5, 8:(dim(dataset)[2]-1))]), seperate_by_group)
+
+}
+
+```
+
+### Without Questionnaire Score
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+seperate_group(imputed_w.o_fused)
+
+```
+
+### With Questionnaire Scores
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+seperate_group(imputed_with_fused)
+
+```
+
+## Correspondence Between Correlation Matrices
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+corr_mats <- list()
+corr_plots <- list()
+
+corr_imp <- function(dataset){
+  
+  corr_mats[[1]] <- dataset%>%
+   filter(imputed_ds == "orig")%>%
+   select(c(3,5, 8:(length(.)-1)))%>%
+   cor(use = "pairwise.complete.obs")
+
+ corr_plots[[1]] <- corr_mats[[1]]%>%
+  ggcorrplot(show.diag = FALSE, type = "upper")+
+  labs(x = "", y = "", title = paste0("Correlation Matrix from Original Dataset"))+
+  theme_pubr(x.text.angle = 60, legend = "right", base_size = 10)
+
+ for (i in c(2:11)) {
+  
+  corr_mat <- dataset%>%
+    filter(imputed_ds == (i-1))%>%
+    select(c(3,5, 8:(length(.)-1)))%>%
+    cor(use = "pairwise.complete.obs")
+  
+  corr_plots[[i]] <- corr_mat%>%
+    ggcorrplot(show.diag = FALSE, type = "upper")+
+    labs(x = "", y = "", title = paste0("Correlation Matrix from Imputation ", (i-1)))+
+    scale_x_discrete(labels = names_radar)+
+    scale_y_discrete(labels = names_radar)+
+    theme_pubr(x.text.angle = 60, legend = "right", base_size = 7)
+  
+  corr_mats[[i]] <- corr_mat 
+  print(corr_plots[[i]])
+  
+  m <- mantel(corr_mats[[1]], corr_mats[[i]])
+  print(cat("Correspondence between original and imputed dataset number ", (i-1), "\n", "Mantel statistic: ", round(m$statistic, 3), "\n", "significancelevel: ", m$signif))
+  
+ }
+  
+}
+
+
+```
+
+### Without Questionnaire Score
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+corr_imp(imputed_w.o_fused)
+
+```
+
+### With Questionnaire Scores
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+corr_imp(imputed_with_fused)
+
+```
