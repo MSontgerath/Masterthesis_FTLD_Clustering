@@ -1,0 +1,1312 @@
+---
+title: "K-means Clustering"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 500px;
+}
+
+```
+
+Load required packages
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(Rcpp)
+library(mice)
+library(ggridges)
+library(scales)
+library(stats)
+library(factoextra)
+library(cluster)
+library(gridExtra)
+library(grid)
+library(ggpubr)
+library(creditmodel)
+library(gridGraphics)
+library(irr)
+library(ggcorrplot)
+library(ggradar)
+library(ggpattern)
+library(diceR)
+library(gtsummary)
+library(gt)
+library(ggforce)
+library(patchwork)
+library(vegan)
+```
+
+Create vectors to call relevant variables
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+CERAD <- c("tot_verb", "tot_Boston", "MMSE", "tot_word", "cor_word1", "cor_word2", "cor_word3", "cor_word_recall", "savings_word", "discrim_wor", "intrusions", "tot_figures", "tot_fig_recall", "savings_fig", "tot_phon", "TMT_A_sec", "TMT_B_sec", "TMT_B.A", "err_TMT")
+
+CDR_subscores <- c("Memory", "Orientation", "Judgment_PBS", "Community.Affairs", "Home.and.Hobbies", "Personal.Care", "Personality_Bhv", "Language")
+
+demographics <- c("Participant", "age_visit", "Gender", "Years.of.education","outcome","outcome_subgroup")
+
+# ordered by cognitive function
+nps_tests <- c("MMSE","CDR.Score",  "FTLD.CDR.Score", "Memory", "Orientation", "Judgment_PBS", "Community.Affairs","Home.and.Hobbies", "Personal.Care",  "Personality_Bhv", "Language", "TMT_A_sec", "stroop_color", "stroop_reading", "tot_word", "cor_word1", "cor_word2", "cor_word3", "cor_word_recall", "savings_word", "discrim_wor", "tot_fig_recall", "savings_fig",  "dig_forward", "block_forward","tot_verb", "tot_phon", "cookie_theft", "tot_Boston", "tot_point","tot_repeat",  "Token_Test", "tot_AAT", "TMT_B_sec", "TMT_B.A", "err_TMT", "dig_backward", "block_backward", "stroop_int", "err_stroop", "intrusions", "cor_H5PT",  "tot_H5PT", "percent_H5PT", "cog_estim", "Applause", "tot_figures", "tot_RMET")
+
+orig_questionnaires <- c("Apathy_p", "Apathy_c", "B.ADL_p", "B.ADL_c","F_ED_p", "F_ED_c","F_Dis_p", "F_Dis_c","F_A_p", "F_A_c", "D_ED_p", "D_ED_c","D_Dis_p", "D_Dis_c","D_A_p", "D_A_c", "Depression.scale")
+
+questionnaires <- c("Apathy_tot", "B.ADL_tot","FrSBe_Freq_ED", "FrSBe_Freq_Dis", "FrSBe_Freq_A","Depression.scale")
+
+
+# name variables for printing in tables and graphs 
+names_demographics <- c("Participant", "Age", "Gender", "Years of Education", "Group", "Diagnostic Specification")
+
+names_nps <- c("CERAD: MMSE", "CDR Sum of Boxes", "FTLD-CDR Sum of Boxes", "CDR: Memory", "CDR: Orientation", "CDR: Judgment, PBS", "CDR: Community Affairs", "CDR: Home & Hobbies", "CDR: Personal Care", "FTLD-CDR: Behavior", "FTLD-CDR: Language", "CERAD: TMT A", "Stroop: Color Naming", "Stroop: Word Reading", "CERAD: Total Wordlist", "CERAD: Wordlist 1", "CERAD: Wordlist 2", "CERAD: Wordlist 3", "CERAD: Wordlist Recall", "CERAD: Wordlist Savings", "CERAD: Wordlist Recognition","CERAD: Figure Recall", "CERAD: Figure Savings", "WMS-R: Digit Span Fw","WMS-R: Visual Span Fw", "CERAD: Semantic Fluency", "CERAD: Phonemic Fluency", "Cookie Theft Task", "CERAD: BNT", "Point", "Repeat","AAT: Token Test", "AAT: Written Language", "CERAD: TMT B", "CERAD: TMT B/A", "CERAD: TMT Errors", "WMS-R: Digit Span Bw", "WMS-R: Visual Span BW", "Stroop: Interference", "Stroop: Error", "CERAD: Wordlist Intrusions","H5PT: Total Correct", "H5PT: Total", "H5PT: Percent Correct", "Cognitive Estimation", "Applause Sign", "CERAD: Figure Copy","RMET")
+
+names_orig_quests <- c("AES p","AES c", "B-ADL p", "B-ADL c","FrsBe: Freq ED p", "FrSBe: Freq ED c","FrSBe: Freg Dis p", "FrSBe: Freq Dis c","FrSBe: Freq A p", "FrSBe: Freq A c","FrsBe: Distress ED p", "FrSBe: Distress ED c","FrSBe: Distress Dis p", "FrSBe: Distress Dis c","FrSBe: Distress A p", "FrSBe: Distress A c", "GDR")
+
+names_quests <- c("AES", "B-ADL", "FrSBe: Executive Dysfunction", "FrSBe: Disinhibition", "FrSBe: Apathy", "GDR")
+
+
+# shortened (for use in radar plots)
+
+names_radar <- c("Age", "Education","MMSE", "CDR", "FTLD-CDR", "CDR: Memory", "CDR: Orientation", "CDR: Judgment, PBS", "CDR: Community Affairs", "CDR: Home & Hobbies", "CDR: Personal Care", "CDR: Behavior", "CDR: Language", "TMT A", "Stroop: Color", "Stroop: Word", "Tot. Wordlist", "Wordlist 1", "Wordlist 2", "Wordlist 3", "Wordlist Recall", "Wordlist Savings", "Wordlist Recognition","Fig. Re.", "Fig. Sav.", "DSF","VSF", "S. Flu.", "P. Flu.", "Cookie", "BNT", "Point", "Repeat","Token Test", "Written Language", "TMT B", "TMT B/A", "TMT Errors", "Digit Span Bw", "Visual Span BW", "Stroop: Interference", "Stroop: Error", "Wordlist Intrusions","H5PT: Correct", "H5PT: Total", "H5PT: Percent", "Cognitive Estimation", "Applause Sign", "Figure Copy","RMET", "AES", "B-ADL", "FrSBe: Ex. Dys.", "FrSBe: Disinhibition", "FrSBe: Apathy", "GDR")
+
+
+
+# variables that are reverse coded (i.e. higher scores meaning worse performance)
+
+to_reverse <- c("CDR.Score", "FTLD.CDR.Score", as.character(CDR_subscores), "intrusions", "TMT_A_sec", "TMT_B_sec", "TMT_B.A","err_TMT", "Token_Test", "err_stroop", "Applause", "Apathy_tot", "B.ADL_tot", "FrSBe_Freq_ED", "FrSBe_Freq_Dis", "FrSBe_Freq_A", "Depression.scale")
+
+
+outcome_labels <- c(
+  healthy_control = "Healthy Control",
+  Alzheimer = "Alzheimer", 
+  bvFTD = "BvFTD", 
+  nfvPPA = "NfvPPA",
+  svPPA = "SvPPA",
+  lvPPA = "LvPPA")
+
+# define color palettes
+
+ cols <- c(healthy_control = "#A3E6DE", 
+           Alzheimer = "#47BAB2" , 
+           bvFTD = "#FBB5B1", 
+           svPPA = "#FF6B6B", 
+           nfvPPA = "#FFA96C", 
+           lvPPA = "#FFE66D")
+ imp_cols <- c("#00FAF6", "#00D3FA", "#0053FA" , "#2e00fa", "#5900FA" ,"#a000bc","#AE00FA" ,"#ca0086", "#FA00F0","#e40058")
+ cols_radar <- c("#FF5A5F","#F4B319", "#007885","#94E27C", "#810F57","#02D0C0", "#F89A91", "#BAAE79", "#9BA198")
+  
+```
+
+# load data 
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+#create list containing different imputed datasets
+create_list <- function(name_list, path) {
+  list <- list()
+  for (i in seq_along(imputed_ds)) {
+    dataset <- read.csv(paste0(path,i))
+    ds_name <- paste0(name_list, i)
+    list[[ds_name]] <- dataset
+  }
+  assign(paste0("list_", name_list), list, envir = .GlobalEnv)
+}
+```
+
+
+# Create and load functions for Clustering Analysis
+
+## Prepare variables for imputation
+
+-   reverse specified variables so that higher scores correspond to
+    better performance
+-   rescale so that datapoints fall within range -1,1
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# function to create datafiles to be clustered: 
+reverse_z <- function(x) {
+  
+  to_reverse <- to_reverse[which(to_reverse %in% colnames(x))]
+  n <- length(x)
+  df <- x[, c(2,4, 7:n)]%>% # select only numeric columns and exclude outcome variable
+    mutate(across(all_of(to_reverse), ~ (mean(.)-.)/sd(.)))%>% # reverse coding and z score transformation 
+    mutate(across(-all_of(to_reverse), ~ (. - mean(.))/sd(.)))%>% # z-score transformation of remaining variables
+    mutate_if(is.integer, as.numeric) %>%
+     transmute_all(~rescale(., to = c(-1,1)))# rescale to limit range to -1 and 1 to avoid large effect of outliers 
+}
+
+
+# apply reverse function to create list containing datafiles to be used for clustering procedure 
+list_scaled_ds <- function(list_df) {
+  list <- list()
+  for (i in 1:length(list_df)) {
+    df <- reverse_z(list_df[[i]])
+    df_name <- paste0("to_kmeans_", i)
+    list[[df_name]] <- df
+  }
+  assign("list_scaled", list, envir = .GlobalEnv)
+}
+# create empty dataframes to fill with Cramer's V and PAC to check on quality of the imputations 
+
+```
+
+-   create matrices to be flled for checks on clustering analysis -\>
+    Cramer V -\> PAC
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+Cramer_V_all_analyses <- matrix(nrow = 0, ncol = 6)
+colnames(Cramer_V_all_analyses) <- c("analysis", "specification", "amount_clusters", "comp_dt_1", "comp_dt_2", "C_Value")
+
+PAC_all_analyses <- matrix(nrow = 0, ncol =4)
+colnames(PAC_all_analyses) <- c("analysis", "specification", "amount_clusters", "PAC_results")
+
+```
+
+## Function to perform k-means clustering analysis
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# perform k_means clustering for specified k and for the different imputed datasets
+k_means_clustering <- function(cluster_size, orig_ds, to_cluster_list) {
+  
+  list_cluster_by_pp <- list() # save k_means objects 
+  Cramer_V_plots <- list() # save CramerV plots for visualization across cluster size
+  overlay_plots <- list() # save cluster plots for visualization across cluster size
+  
+  for(c in cluster_size) {
+    
+    n_imp <- length(to_cluster_list)
+    names <- c(paste0(rep("ds_", n_imp), seq(1:n_imp)))
+    orig_outcome <- orig_ds[, which(colnames(orig_ds) == "outcome")]
+    cluster <- matrix(nrow = dim(orig_ds)[1], ncol = n_imp, dimnames = list(orig_outcome, names)) # gives cluster number per participant 
+    num_clust <- list()
+    cluster_plots <- list()
+    
+    # table for explained variance by dimension
+    row_names <- c("Dim.1", "Dim.2")
+    col_names <- c(paste0(rep("ds_", length(to_cluster_list)), c(1:length(to_cluster_list))))
+    var_explained <- matrix(nrow = 2, ncol = length(to_cluster_list), dimnames = list(row_names, col_names))
+    
+    for (i in 1:n_imp) {
+      set.seed(230322)
+      k_means <- kmeans(to_cluster_list[[i]], centers = c, iter.max = 400, nstart = 100)
+      cluster[,i] <- k_means[[1]] 
+      
+      ### create overlay cluster plot
+      res.pca <- prcomp(to_cluster_list[[i]], scale = TRUE) # Dimension reduction using PCA
+      ind.coord <- as.data.frame(get_pca_ind(res.pca)$coord) # Coordinates of individuals
+      ind.coord$outcome <- orig_ds$outcome# Add outcome groups from the original data set
+      ind.coord$Participant <- orig_ds$Participant
+      ind.coord$ds <- factor(k_means$cluster) # Add clusters obtained using the K-means algorithm
+      colnames(ind.coord)[which(colnames(ind.coord) == "ds")] <- paste0("ds_", i)
+      assign(paste0("to_plot_", i), ind.coord, envir = .GlobalEnv)
+      
+      eigenvalue <- round(get_eigenvalue(res.pca), 1)
+      var_explained[,i] <- eigenvalue$variance.percent[1:2]
+      
+    }
+    
+    # combine ds
+    first_col <- dim(to_plot_1)[2]-2
+    last_col <- dim(to_plot_1)[2]  
+    ind.coord <- to_plot_1
+    
+    plotlist <- list(to_plot_2, to_plot_3, to_plot_4, to_plot_5, to_plot_6, to_plot_7, to_plot_8, to_plot_9, to_plot_10)
+    
+    # pivot_longer
+    for(n in plotlist){
+      ind.coord <- full_join(ind.coord, n[,c(first_col:last_col)],by = c("outcome", "Participant"))
+      assign("ind.coord", ind.coord, envir = .GlobalEnv)
+    }
+    
+    ind.coord <- ind.coord%>%
+      pivot_longer(cols = c(last_col:(length(ind.coord))), names_to = "ds", values_to = "cluster")
+    ind.coord$ds <- as.factor(ind.coord$ds)
+    ind.coord$outcome <- as.factor(ind.coord$outcome)
+    
+    for(i in 1:n_imp){
+      hull <- ind.coord %>%
+        filter(ds == paste0("ds_",i))%>%
+        drop_na() %>%
+        group_by(ds, cluster) %>% 
+        slice(chull(Dim.1, Dim.2))
+      assign(paste0("hull_", i), hull, envir = .GlobalEnv)
+    }
+    
+    plot <-   ind.coord %>%
+    ggplot(aes(x = Dim.1,
+               y = Dim.2))+
+    geom_point(aes(color = outcome))+
+    geom_polygon(data = hull_1, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_2, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_3, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_4, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_5, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_6, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_7, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_8, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_9, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    geom_polygon(data = hull_10, aes(fill = cluster), alpha = 0.02, size = 0.5, color = "black")+
+    guides(fill = "none")+
+    scale_color_manual(values = cols, labels = outcome_labels, drop = TRUE)+
+    labs(colour = "", 
+         x = paste0("Dimension 1 (",range(var_explained[1,])[1], "-",range(var_explained[1,])[2], "%)" ), 
+         y = paste0("Dimension 2 (",range(var_explained[2,])[1], "-",range(var_explained[2,])[2], "%)" ))+
+    theme_pubr(legend = "right")
+  
+    overlay_plots[[which(cluster_size == c)]] <- plot
+    
+    cluster <- cbind(orig_ds[c(1,5,6)], cluster)
+    
+    # calculate correspondence between clustering across datasets used 
+    cluster[, c(4:length(cluster))] <- lapply(cluster[, c(4:length(cluster))], function(x) as_factor(x))
+    Cramer_V <- round(char_cor(cluster[,c(4:length(cluster))]), 2)
+    Cramer_V_plots[[(which(cluster_size == c))]] <- Cramer_V
+    names(Cramer_V_plots)[which(cluster_size == c)] <- paste0("CramerV (k = ", c, ")")
+    
+    # fill Cramer_V_all_analyses
+    
+    to_Cramer_V <- as_tibble(Cramer_V)%>%
+      pivot_longer(., cols = c(1:10), names_to = "comp_dt_2", values_to = "C_Value")
+    comp_dt_1 <- rep(rep(c("ds_1","ds_2","ds_3","ds_4","ds_5","ds_6","ds_7","ds_8","ds_9","ds_10"), each = 10))
+    specification <- rep(quests, 100)
+    analysis <- rep(group, 100)
+    amount_clusters <- rep(c, 100)
+    to_Cramer_V <- tibble(analysis,specification, amount_clusters, comp_dt_1,to_Cramer_V)
+    
+    Cramer_V_all_analyses <- rbind(Cramer_V_all_analyses, to_Cramer_V)
+    assign("Cramer_V_all_analyses", Cramer_V_all_analyses, envir = .GlobalEnv)
+    
+    list_cluster_by_pp[[which(cluster_size == c)]] <- cluster
+    names(list_cluster_by_pp)[which(cluster_size == c)] <- paste0("cluster_by_pp_", c)
+    
+  }
+  
+  print(ggarrange(plotlist = overlay_plots, common.legend = TRUE, legend = "right"))
+  
+  # visualize CramerV across cluster size
+  my_corrplot <- function(x) {
+    ggcorrplot(Cramer_V_plots[[x]], method = "square", type = "upper", title = names(Cramer_V_plots)[x], show.diag = FALSE, outline.color = "white", lab = TRUE, lab_col = "white", tl.srt = 45, lab_size = 3)+scale_fill_gradient2(low = "white", high = "red", breaks=c(0, 1), limit=c(0, 1))
+  }
+  
+  if(length(cluster_size) >= 8) {print(ggarrange(my_corrplot(1)+rremove("x.text"), my_corrplot(2)+rremove("xy.text"),my_corrplot(3)+rremove("xy.text"), my_corrplot(4)+rremove("x.text"),my_corrplot(5)+rremove("xy.text"), my_corrplot(6)+rremove("y.text"),my_corrplot(7), my_corrplot(8)+rremove("y.text"), common.legend = TRUE, align = c("hv")))}
+  
+ assign("list_cluster_by_pp", list_cluster_by_pp, envir = .GlobalEnv) 
+  
+}
+
+
+voting_merging <- function(list_cluster_by_pp, amount_imputations) {
+  
+  first_size <- as.integer(substr(names(list_cluster_by_pp)[1], 15, 17))
+  last_size <- as.integer(substr(names(list_cluster_by_pp)[length(list_cluster_by_pp)], 15, 17))
+  mat_names <- c(paste0("cluster_size_", seq(from = first_size, to = last_size)))
+  winning_cluster <- matrix(nrow = nrow(datasets[[1]]), ncol = length(list_cluster_by_pp), dimnames = list(datasets[[1]]$outcome, mat_names)) # gives cluster number per participant 
+  winning_cluster <- cbind(datasets[[1]][, c(1,5,6)], winning_cluster)
+  n_ds <- amount_imputations
+  last_orig <- 3+n_ds
+  first_new <- 4+n_ds
+  last_new <- (2*n_ds)+2
+  
+  PAC_results <- vector()
+  amount_clusters <- vector()
+  
+  for (j in 1:length(list_cluster_by_pp)) {
+    
+    winning_cluster[,(3+j)] <- majority_voting(list_cluster_by_pp[[j]][, c(4:last_orig)], is.relabelled = FALSE)
+    list_cluster_by_pp[[j]][,(length(list_cluster_by_pp[[j]])+1)] <- as.character(majority_voting(list_cluster_by_pp[[j]][, c(4:last_orig)], is.relabelled = FALSE))
+    colnames(list_cluster_by_pp[[j]])[length(list_cluster_by_pp[[j]])] <- "winning_cluster"
+    
+    consensus_mat <- consensus_matrix(list_cluster_by_pp[[j]][, c(4:last_orig)])
+    PAC_results[j] <- PAC(consensus_mat, 0.1, 0.9)
+    amount_clusters[j] <- paste0("cluster_size_", j+1)
+  }
+  
+  # fill PAC_all_analyses
+  
+  analysis <- rep(group, 8)
+  specification <- rep(quests, 8)
+  
+  to_PAC <- tibble(analysis, specification, amount_clusters, PAC_results)
+   
+  PAC_all_analyses <- rbind(PAC_all_analyses, to_PAC)
+  assign("PAC_all_analyses", PAC_all_analyses, envir = .GlobalEnv)
+  
+  winning_cluster[,(4:length(winning_cluster))] <- lapply(winning_cluster[, c(4:length(winning_cluster))], function(x) as_factor(x)) 
+  assign("winning_cluster", winning_cluster, envir = .GlobalEnv)
+  assign("list_cluster_by_pp", list_cluster_by_pp, envir = .GlobalEnv)
+  assign("PAC_results", PAC_results, envir = .GlobalEnv)
+  
+}
+
+
+
+cluster_by_var <- function(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations) {
+  
+  
+  # a) final votes by outcome and cluster_size 
+  
+  cluster_long <- pivot_longer(winning_cluster, cols = c(4:length(winning_cluster)), names_to = "cluster_size", values_to = "cluster_number")
+  cluster_long$cluster_size <- as_factor(cluster_long$cluster_size)
+  cluster_long$outcome <- factor(cluster_long$outcome, levels = c("healthy_control", "Alzheimer", "bvFTD", "svPPA", "nfvPPA", "lvPPA"))
+  
+  plot_dt <- cluster_long%>%
+    group_by(cluster_size, cluster_number)%>%
+    mutate("count_by_clus" = n())%>%
+    group_by(cluster_size, cluster_number, count_by_clus, outcome)%>%
+    summarize("n" = n(), 
+              "percent" = round(n()/count_by_clus*100,0))%>%
+    distinct()%>%
+    arrange(desc(outcome))%>%
+    group_by(cluster_size, cluster_number)%>%
+    mutate("position_lab" = ifelse(percent < 5, NA, cumsum(n)-1/2*n))
+  
+  
+    cluster_size_labels <- c(
+    cluster_size_2 = "Number of clusters k = 2",
+    cluster_size_3 = "Number of clusters k = 3",
+    cluster_size_4 = "Number of clusters k = 4",
+    cluster_size_5 = "Number of clusters k = 5",
+    cluster_size_6 = "Number of clusters k = 6",
+    cluster_size_7 = "Number of clusters k = 7",
+    cluster_size_8 = "Number of clusters k = 8", 
+    cluster_size_9 = "Number of clusters k = 9")
+  
+  count_plots_1 <- plot_dt%>%
+    filter(cluster_size == "cluster_size_2" |cluster_size == "cluster_size_3" |cluster_size == "cluster_size_4" |cluster_size == "cluster_size_5" )%>%
+    ggbarplot(x = "cluster_number", y = "n", fill = "outcome", 
+              palette = cols,
+              width = 0.95,
+              ylab = "Count", xlab = "Cluster")+
+    facet_row(vars(cluster_size), scales = 'free', space = 'free', labeller = labeller(cluster_size = cluster_size_labels))+
+    geom_text(aes(y = position_lab, label = paste0(percent, "%")))+
+    theme(legend.position = "none")
+  
+  
+  count_plots_2 <- plot_dt%>%
+    filter(cluster_size == "cluster_size_6" |cluster_size == "cluster_size_7" |cluster_size == "cluster_size_8")%>%
+    ggbarplot(x = "cluster_number", y = "n", fill = "outcome", 
+              palette = cols,
+              width = 0.95,
+              ylab = "Count", xlab = "Cluster")+
+    facet_row(vars(cluster_size), scales = 'free', labeller = labeller(cluster_size = cluster_size_labels))+
+    geom_text(aes(y = position_lab, label = paste0(percent, "%")))+
+    theme(legend.position = "none")
+  
+  count_plots_3 <- plot_dt%>%
+    filter(cluster_size == "cluster_size_9")%>%
+    ggbarplot(x = "cluster_number", y = "n", fill = "outcome", 
+              width = 0.95,
+              ylab = "Count", xlab = "Cluster", legend.title = "Groups")+
+    facet_row(vars(cluster_size), scales = 'free', labeller = labeller(cluster_size = cluster_size_labels))+
+    geom_text(aes(y = position_lab, label = paste0(percent, "%")))+
+    theme(legend.position = "right")+
+    scale_fill_manual(values = cols, labels = outcome_labels, drop = TRUE)
+  
+  
+  print(count_plots_1/ count_plots_2/ (count_plots_3|plot_spacer())+plot_annotation(title = "Composition of Clusters: Visualizing Diagnostic Group", subtitle = paste0("(", specification,")")))
+  
+  # b) cluster centers of the final votes 
+  
+  # 1. merge the 9 datasets belonging to analysis with varying cluster size 
+  # 1.1 convert into long format with the following variables: Participant, outcome, Gender, winning_cluster, imputed_ds, cluster
+  # and adding a new column corresponding to the number of k in the analysis (i.e. "cluster_size" ranging from 2:10)
+  # 1.2 bind the 9 datasets 
+  
+  # 2. merge the 10 imputed datasets containing the scaled scores per variable and participant
+  # 2.1 convert into long format with the following variables: Participant, var_name, value 
+  # and adding a new column corresponding to the number of dataset (i.e. "imputed_ds" ranging from 1:10)
+  # 2.2 bind the 10 datasets
+  
+  # 3. combine the two created datasets into one dataset containing the scaled score per participant across the 10
+  # imputations and the cluster depending on cluster analysis with k ranging fom 2:9
+  
+  # 4. visualize cluster centers for the final cluster
+  
+  # ad 1)
+  
+  n_ds <- amount_imputations
+  final_clus <- which(colnames(list_cluster_by_pp[[1]]) == "winning_cluster")
+  
+  merged_cluster <- matrix(nrow = 0, ncol = 5)
+  colnames(merged_cluster) <- c("Participant", "outcome", "outcome_subgroup", "winning_cluster", "cluster_size")
+  
+  
+  for(i in 1:length(list_cluster_by_pp)){
+    ds <- list_cluster_by_pp[[i]]%>%
+      select(c(1:3, final_clus))%>%
+      mutate("cluster_size" = as.integer(substr(names(list_cluster_by_pp)[i], 15,17)))
+    merged_cluster <- rbind(merged_cluster, ds)
+  }
+  
+  # ad 2)
+  
+  merged_ds <- matrix(nrow = 0, ncol = 4)
+  colnames(merged_ds) <- c("Participant", "var_name", "value", "imputed_ds")
+  
+  for(i in 1:length(list_scaled)) {
+    ds <- cbind("Participant" = list_cluster_by_pp[[1]][1], list_scaled[[i]])%>%
+      pivot_longer(., cols = c(2:length(.)), names_to = "var_name", values_to = "value")%>%
+      mutate("imputed_ds" = i)
+    merged_ds <- rbind(merged_ds, ds)
+  }
+  
+  # ad 3)
+  
+  merged <- left_join(merged_cluster, merged_ds, by = c("Participant"))
+  assign(paste0("merged_", group, "_", quests), merged, envir = .GlobalEnv)
+  
+  # ad 4)
+  # assign variables to cognitive function
+  variable_name <- c(demographics[c(2,4)], nps_tests, questionnaires)
+  cognitive_function <- as_factor(c(rep("Demographic", 2), rep("Screening/ Severity", 11), rep("Attention", 3), rep("Learning, Memory", 11), rep("Language", 8), rep("Executive Function", 13), "Perceptual Motor Skills", "Social Cognition", rep("Questionnaires", 6)))
+  split_graph <- as_factor(c(rep("1", 16), rep("2", 19),rep("3", 13), rep("1", 2), rep("3", 6))) # split variables for better visualization in three groups
+  cog_group <- tibble(variable_name,cognitive_function, split_graph)
+  
+  # add grouping index to dataframe containing variable scores and clusters 
+  combined_grouped <- left_join(merged, cog_group, by = c("var_name" = "variable_name"))
+  
+  for (i in cluster_size){
+    
+        plot1 <- combined_grouped%>%
+      filter(cluster_size == i, split_graph == 1)%>%
+      filter(is.na(winning_cluster) != TRUE)%>%
+      ggplot(aes(x = var_name, y = value))+
+      geom_boxplot_pattern(aes(pattern_type = winning_cluster), pattern = 'magick', pattern_fill = 'black', position = "dodge")+
+      scale_pattern_type_discrete(choices = gridpattern::names_magick)+
+      theme(axis.text.x = element_text(angle = 45, size = 11, hjust = 1), plot.title = element_text(size=20), legend.position = "null")+
+      facet_grid(~cognitive_function, scales = "free_x", space = "free_x")+
+      labs(title = paste0("Cluster Centers (k = ", i, ")"))
+    
+    plot2 <- combined_grouped%>%
+      filter(cluster_size == i, split_graph == 2)%>%
+      filter(is.na(winning_cluster) != TRUE)%>%
+      ggplot(aes(x = var_name, y = value))+
+      geom_boxplot_pattern(aes(pattern_type = winning_cluster), pattern = 'magick', pattern_fill = 'black', position = "dodge")+
+      scale_pattern_type_discrete(choices = gridpattern::names_magick)+
+      theme(axis.text.x = element_text(angle = 45, size = 11, hjust = 1), plot.title = element_text(size=20), legend.position = "null")+
+      facet_grid(~cognitive_function, scales = "free_x", space = "free_x")
+    
+    plot3 <- combined_grouped%>%
+      filter(cluster_size == i, split_graph == 3)%>%
+      filter(is.na(winning_cluster) != TRUE)%>%
+      ggplot(aes(x = var_name, y = value))+
+      geom_boxplot_pattern(aes(pattern_type = winning_cluster), pattern = 'magick', pattern_fill = 'black', position = "dodge")+
+      scale_pattern_type_discrete(choices = gridpattern::names_magick)+
+      theme(axis.text.x = element_text(angle = 45, size = 11, hjust = 1), plot.title = element_text(size=20), legend.position = "null")+
+      facet_grid(~cognitive_function, scales = "free_x", space = "free_x")
+    
+  
+  by_group <- cluster_long%>%
+    filter(cluster_size == paste0("cluster_size_",i))
+  
+      clus_pattern <- by_group%>%
+        ggplot(aes(x = cluster_number))+
+                geom_bar(aes(fill = outcome))+
+        geom_bar_pattern(aes(pattern_type = cluster_number), 
+                         pattern              = 'magick',
+                         pattern_fill         = 'black',
+                         pattern_aspect_ratio = 1.75,
+                         fill                 = 'transparent',
+                         color = 'black')+ 
+        scale_pattern_type_discrete(choices = gridpattern::names_magick)+
+        theme_pubr(legend = "right")+
+        scale_fill_manual(values = cols, labels = outcome_labels)+
+        labs(x ="Cluster", y = "Count", fill = "Group", pattern_type = "Cluster")
+        
+      clus_prop <- by_group%>%
+        ggplot(aes(x = "", fill = outcome)) +
+        geom_bar(position = "fill") +
+        coord_polar("y") +
+        facet_grid(~cluster_number)+
+        scale_fill_manual(values = cols, labels = outcome_labels, drop = TRUE)+
+        theme_void()+
+        theme(legend.position = "null")      
+        
+    by_outcome <- ggarrange(clus_prop, clus_pattern+rremove("legend"), nrow = 2, heights = c(1,4))
+    
+    print(
+      ggarrange(
+        ggarrange(
+          ggarrange(plot1+rremove("xylab"), plot2+rremove("xylab"), nrow = 2),
+          ggarrange(plot3+rremove("xylab"), by_outcome, ncol = 2, widths = c(3,1)), nrow = 2, ncol = 1, heights = c(2,1)), 
+        ggarrange(get_legend(clus_pattern), nrow = 2), widths = c(8,1)))
+    
+    }
+  
+  # create radar plot 
+  
+  for (c in cluster_size){
+    
+    Ystart <- -1 # Y axis start value
+    Yend   <- 1 # Y axis end value
+    Yint   <- 0.5  # Y axis interval
+    
+combined_grouped$var_name <- factor(combined_grouped$var_name, levels = c(demographics[c(2,4)],nps_tests, questionnaires),ordered = T)
+    
+    radar_plot <- combined_grouped%>%
+      filter(cluster_size == c)%>%
+      group_by(winning_cluster, var_name)%>%
+      summarize("mean" = mean(value))%>%
+      select(c(var_name, winning_cluster, mean))%>%
+      ggplot(aes(x = var_name, y = mean, group = winning_cluster))+
+      geom_polygon(aes(x = var_name, y = mean, group = winning_cluster, colour = winning_cluster), fill = NA, size = 1.1) +
+      geom_point(aes(x = var_name, y = mean, group = winning_cluster, colour = winning_cluster), size = 3)+
+      scale_color_manual(values = cols_radar)+
+      # Set Y axis gridlines
+      geom_hline(yintercept = seq(Ystart,Yend, by = Yint), alpha = 0.8, colour = "grey70", size = 0.2) + 
+      # Add vertical X lines for metrics
+      geom_segment(aes(x = var_name, xend = var_name, y = Ystart, yend = Yend), size = 0.2, colour = "grey70")+
+      scale_y_continuous(limits = c(-1, 1.25))+
+      annotate("rect", xmin = 0.5, xmax = 2.5, ymin = 1.05, ymax = 1.2, fill = "#00FAF6")+
+      annotate("rect", xmin = 2.5, xmax = 13.5, ymin = 1.05, ymax = 1.2, fill = "#00D3FA")+
+      annotate("rect", xmin = 13.5, xmax = 16.5, ymin = 1.05, ymax = 1.2,  fill = "#0053FA")+
+      annotate("rect", xmin = 16.5, xmax = 27.5, ymin = 1.05, ymax = 1.2,  fill = "#2e00fa")+
+      annotate("rect", xmin = 27.5, xmax = 35.5, ymin = 1.05, ymax = 1.2,  fill = "#5900FA")+
+      annotate("rect", xmin = 35.5, xmax = 48.5, ymin = 1.05, ymax = 1.2, fill = "#a000bc")+
+      annotate("rect", xmin = 48.5, xmax = 49.5, ymin = 1.05, ymax = 1.2, fill = "#AE00FA")+
+      annotate("rect", xmin = 49.5, xmax = 50.5, ymin = 1.05, ymax = 1.2, fill = "#ca0086")+
+      coord_polar(start = -((180/50)*(pi/180)))+
+      scale_x_discrete(labels = names_radar)+
+      labs(colour = "Cluster", title = paste0("Cluster Centers: ", specification, " (k = ", c, ")"))+
+      theme_classic(base_size = 15) +
+      theme(axis.ticks = element_blank(),
+            axis.title = element_blank(),
+            axis.line = element_blank(),
+            axis.text.y = element_blank(),
+            panel.grid = element_blank(), 
+            legend.position = "none") 
+    
+    if(quests == "with_quest"){
+      radar_plot <- radar_plot+
+      annotate("rect", xmin = 50.5, xmax = 56.5, ymin = 1.05, ymax = 1.2, fill = "#FA00F0")
+    }
+    
+    
+    legend_cog <- as_ggplot(get_legend(ggplot(combined_grouped)+
+                                         geom_bar(aes(x =cognitive_function, fill = cognitive_function))+
+                                         labs(fill = "Cognitive Function")+
+                                         scale_fill_manual(values = imp_cols)))
+    
+    
+    by_group <- cluster_long%>%
+      filter(cluster_size == paste0("cluster_size_",c))
+    
+    max_count <- by_group%>%
+      group_by(cluster_number)%>%
+      summarize("n" = n())
+    
+    
+    shading_clus <- by_group%>%
+      group_by(cluster_number)%>%
+      mutate(xmin = as.numeric(cluster_number) - 0.45, 
+             xmax = as.numeric(cluster_number) +0.45)
+    
+    clus_outcome <- by_group%>%
+      ggplot(aes(x = cluster_number))+
+      geom_bar(aes(fill = outcome), color = "black", width = 0.8)+
+      scale_fill_manual(values = cols, labels = outcome_labels, drop = TRUE)+
+      geom_rect(data = shading_clus, inherit.aes = F, aes(xmin = xmin, xmax = xmax, ymin = -1, ymax = max(max_count$n)+0.02*max(max_count$n), color = factor(cluster_number)), alpha = 0, size = 1.5)+
+      coord_cartesian(ylim = c(0,max(max_count$n)), clip = "off")+
+      scale_color_manual(values = cols_radar)+
+      labs(x = "Cluster", y = "Count", fill = "Group", colour = "Cluster")+
+      theme_pubr(legend = "right")
+    
+    legend_group <- as_ggplot(get_legend(clus_outcome+guides(color = "none")))
+    legend_cluster <- as_ggplot(get_legend(clus_outcome+guides(fill = "none")))
+    
+    print(radar_plot +((legend_cog |legend_cluster|legend_group)/plot_spacer()/clus_outcome+rremove("legend")) + plot_layout(widths = c(3,1)))
+    
+  }
+  
+  
+}
+
+
+```
+
+# Perform Clustering Analysis
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+imputed_ds <- c(1:10)
+
+path_w.o <- "C:/Users/marie/OneDrive/CN2 master/Thesis/imputed/less_20_perc_miss_w.o_quest/w.o.quest"
+path_with <- "C:/Users/marie/OneDrive/CN2 master/Thesis/imputed/less_20_perc_miss_with_quest/with_quest"
+
+create_list("w.o_quest", path_w.o)
+create_list("with_quest", path_with)
+
+```
+
+# Perform Clustering Analysis
+
+## All groups
+
+### Without questionnaires
+
+#### First run k-means clustering
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+cluster_size <- c(2:9)
+quests <- "w.o_quest"
+group <- "all_groups"
+name_suffix <- "all_groups_w.o_quest_k2_k9"
+specification <- "all Groups, Without Questionnaires"
+
+filtered_by_group <- lapply(list_w.o_quest, function(x) filter(x, outcome == "healthy_control" | outcome == "Alzheimer" | outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_all_groups_w.o_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:56))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+### With questionnaires
+
+#### First Run k-means clustering analysis
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+quests <- "with_quest"
+name_suffix <- "all_groups_with_quest_k2_k9"
+specification <- "all Groups, With Questionnaires"
+
+filtered_by_group <- lapply(list_with_quest, function(x) filter(x, outcome == "healthy_control" | outcome == "Alzheimer" | outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering analysis
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_all_groups_with_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:56))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+## All patients
+
+### Without questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+cluster_size <- c(2:9)
+quests <- "w.o_quest"
+group <- "all_patients"
+name_suffix <- "all_patients_w.o_quest_k2_k9"
+specification <- "all Patient Groups, Without Questionnaires"
+
+filtered_by_group <- lapply(list_w.o_quest, function(x) filter(x, outcome == "Alzheimer" | outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run of k-means clustering analysis
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_all_patients_w.o_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:56))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+### With questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+quests <- "with_quest"
+name_suffix <- "all_patients_with_quest_k2_k9"
+specification <- "all Patient Groups, With Questionnaires"
+
+filtered_by_group <- lapply(list_with_quest, function(x) filter(x, outcome == "Alzheimer" | outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_all_patients_with_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:62))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+```
+
+## PPA and bvFTD
+
+### Without questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+cluster_size <- c(2:9)
+quests <- "w.o_quest"
+group <- "PPA_bvFTD"
+name_suffix <- "PPA_bvFTD_w.o_quest_k2_k9"
+specification <- "PPA and bvFTD, Without Questionnaires"
+
+filtered_by_group <- lapply(list_w.o_quest, function(x) filter(x, outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_PPA_bvFTD_w.o_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:56))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+### With questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+quests <- "with_quest"
+name_suffix <- "PPA_bvFTD_with_quest_k2_k9"
+specification <- "PPA and bvFTD, With Questionnaires"
+
+filtered_by_group <- lapply(list_with_quest, function(x) filter(x, outcome == "bvFTD"|outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-emans clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_PPA_bvFTD_with_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:62))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+```
+
+## PPA
+
+### Without questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+cluster_size <- c(2:9)
+quests <- "w.o_quest"
+group <- "PPA"
+name_suffix <- "PPA_w.o_quest_k2_k9"
+specification <- "PPA, Without Questionnaires"
+
+filtered_by_group <- lapply(list_w.o_quest, function(x) filter(x, outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_PPA_w.o_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:56))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+### With questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+quests <- "with_quest"
+name_suffix <- "PPA_with_quest_k2_k9"
+specification <- "PPA, With Questionnaires"
+
+filtered_by_group <- lapply(list_with_quest, function(x) filter(x, outcome == "svPPA"|outcome == "nfvPPA" | outcome == "lvPPA"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_PPA_with_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:62))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+```
+
+## AD and bvFTD
+
+### Without questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+cluster_size <- c(2:9)
+quests <- "w.o_quest"
+group <- "AD_bvFTD"
+name_suffix <- "AD_bvFTD_w.o_quest_k2_k9"
+specification <- "AD and bvFTD, Without Questionnaires"
+
+filtered_by_group <- lapply(list_w.o_quest, function(x) filter(x, outcome == "Alzheimer" | outcome == "bvFTD"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+Second run k-means clustering
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_AD_bvFTD_w.o_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:62))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+
+```
+
+### With questionnaires
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+quests <- "with_quest"
+name_suffix <- "AD_bvFTD_with_quest_k2_k9"
+specification <- "AD and bvFTD, With Questionnaires"
+
+filtered_by_group <- lapply(list_with_quest, function(x) filter(x, outcome == "Alzheimer" | outcome == "bvFTD"))
+
+datasets <- filtered_by_group 
+list_scaled_ds(datasets)
+
+k_means_clustering(cluster_size = cluster_size, orig_ds = datasets[[1]], to_cluster_list = list_scaled)
+
+voting_merging(list_cluster_by_pp, amount_imputations = 10)
+
+cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+
+```
+
+#### Second run k-means clustering 
+
+```{r fig.height=15, fig.width=25, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+k_2nd <- merged_AD_bvFTD_with_quest
+
+for(selected in 2:4) {
+  
+  print(cat(paste("Second run of k-means clustering for the resulting clusters of k = ", selected, "\n\n")))
+  to_cluster <- k_2nd%>%
+    filter(cluster_size == selected)%>%
+    pivot_wider(values_from = "value", names_from = "var_name")
+  
+  list_to_cluster <- list()
+  for(i in 1:10){
+    list_to_cluster[[i]] <- to_cluster%>%
+      filter(imputed_ds == i)%>%
+      select("winning_cluster", c(7:62))
+    names(list_to_cluster)[i] <- paste0("to_kmeans_",i)
+  }
+  
+  for(clus in 1:selected) {
+    
+    print(cat(paste("k = ", selected, ", cluster ", clus, "\n\n")))
+    
+    orig <- lapply(filtered_by_group, function(x) x[which(list_to_cluster[[1]]$winning_cluster == clus),])
+    list_scaled <- lapply(list_to_cluster, function(x) filter(x,winning_cluster == clus)%>%select(-1))
+    
+    k_means_clustering(cluster_size, orig[[1]], list_scaled)
+    
+    datasets <- orig
+    voting_merging(list_cluster_by_pp, amount_imputations = 10)
+    
+    name_suffix <- paste0("clus_",clus,quests,"_" ,group)
+    
+    cluster_by_var(list_cluster_by_pp, list_scaled, name_suffix, cluster_size, amount_imputations = 10)
+    
+  }
+  
+}
+```
